@@ -1,11 +1,13 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
+	"time"
 )
 
 type Cotacao struct {
@@ -25,17 +27,23 @@ type Cotacao struct {
 }
 
 func main() {
-	http.HandleFunc("/", BuscaCotacaoHandler)
+	http.HandleFunc("/cotacao", BuscaCotacaoHandler)
 	http.ListenAndServe(":8080", nil)
 
 }
 func BuscaCotacaoHandler(w http.ResponseWriter, r *http.Request) {
-	cot, error := BuscaCotacao()
+
+	w.Header().Set("Content-Type", "application/json")
+	ctx, cancel := context.WithTimeout(r.Context(), time.Millisecond)
+	defer cancel()
+
+	cot, error := BuscaCotacao(ctx)
 	if error != nil {
 		w.WriteHeader(http.StatusInternalServerError)
+		http.Error(w, "Falhar a buscar cotação", http.StatusInternalServerError)
 		return
 	}
-	w.Header().Set("Content-Type", "application/json")
+
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(cot)
 
