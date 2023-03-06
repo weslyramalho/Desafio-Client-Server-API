@@ -2,12 +2,15 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"time"
+
+	_ "github.com/mattn/go-sqlite3"
 )
 
 type Cotacao struct {
@@ -34,7 +37,7 @@ func main() {
 func BuscaCotacaoHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
-	ctx, cancel := context.WithTimeout(r.Context(), time.Millisecond)
+	ctx, cancel := context.WithTimeout(r.Context(), 2000*time.Millisecond)
 	defer cancel()
 
 	cot, error := BuscaCotacao(ctx)
@@ -44,11 +47,12 @@ func BuscaCotacaoHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	sql.Open("sqlite3", "cotacao.db")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(cot)
 
 }
-func BuscaCotacao() (*Cotacao, error) {
+func BuscaCotacao(c context.Context) (*Cotacao, error) {
 	req, err := http.Get("https://economia.awesomeapi.com.br/json/last/USD-BRL")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error ao fazer requisição: %v\n", err)
