@@ -1,9 +1,9 @@
-FROM golang:alpine
-RUN apk add --no-cache git
-RUN apk add --no-cache sqlite-libs sqlite-dev
-RUN apk add --no-cache build-base
-WORKDIR /go/src/app
-COPY *.go ./
-RUN go-wrapper download
-RUN go-wrapper install
-RUN apk add alpine-sdk
+FROM debian:stable-slim
+
+RUN apt-get update && \
+	DEBIAN_FRONTEND=noninteractive apt-get -yq --no-install-recommends install sqlite3=3.* && \
+	rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* && \
+	mkdir -p /root/db
+
+WORKDIR /root/db
+ENTRYPOINT [ "sqlite3" ]
