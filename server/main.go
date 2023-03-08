@@ -28,6 +28,9 @@ type Cotacao struct {
 		CreateDate string `json:"create_date"`
 	} `json:"USDBRL"`
 }
+func newCotacao(Cotacao[])*Cotacao{
+
+}
 
 func main() {
 	http.HandleFunc("/cotacao", BuscaCotacaoHandler)
@@ -42,12 +45,15 @@ func BuscaCotacaoHandler(w http.ResponseWriter, r *http.Request) {
 
 	cot, error := BuscaCotacao(ctx)
 	if error != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		http.Error(w, "Falhar a buscar cotação", http.StatusInternalServerError)
-		return
+		panic(fmt.Sprintf("Falha ao tentar pegar cotação: %v", error))
 	}
 
-	sql.Open("sqlite3", "cotacao.db")
+	ctx = nil
+	ctx, _ = context.WithTimeout(context.Background(), 10*time.Nanosecond)
+
+	
+
+	sql.Open("sqlite3", ":memory:")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(cot)
 
@@ -70,3 +76,10 @@ func BuscaCotacao(c context.Context) (*Cotacao, error) {
 	}
 	return &data, nil
 }
+
+func salvarCotacao(c context.Context)(*Cotacao, error){
+	cot := Cotacao["USDBRL"]
+
+}
+
+
