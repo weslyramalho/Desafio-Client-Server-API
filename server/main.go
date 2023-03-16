@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -8,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -25,41 +27,46 @@ type Cotacaodb struct {
 	Timestamp  string `json:"timestamp"`
 	CreateDate string `json:"create_date"`
 }
-type Car struct {
-	id    float64
-	name  string
-	price float64
+
+type Dolar struct {
+	Bid string `json:"bid"`
 }
 
 func main() {
-	http.HandleFunc("/cotacao", productHandler)
+	http.HandleFunc("/cotacao", cotaHandler)
 	http.ListenAndServe(":8080", nil)
 
 }
-func productHandler(w http.ResponseWriter, r *http.Request) {
-
+func cotaHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
+	ctx, cancel := context.WithTimeout(r.Context(), 2000*time.Millisecond)
+	defer cancel()
 	var cot map[string]Cotacaodb
-	cot, err := BuscaCotacao()
+	cot, err := BuscaCotacao(ctx)
 	if err != nil {
-		panic(err)
+		panic(fmt.Sprintf("Erro ao buscar cotação %v", err))
 	}
-	println(cot["USDBRL"].Name)
-	err = salvProd(cot)
+
+	ctx = nil
+	ctx, _ = context.WithTimeout(context.Background(), 10*time.Nanosecond)
+
+	err = salvCota(ctx, cot)
 	if err != nil {
-		log.Fatal(err)
+		panic(fmt.Sprintf("Erro ao salvar cotação %v", err))
 	}
-	//log.Printf("main.CotacaoHandler - Último ID inserido: %d", lastID)
-	json.NewEncoder(w).Encode(cot)
+	dol := Dolar{Bid: cot["USDBRL"].Bid}
+
+	json.NewEncoder(w).Encode(dol)
 
 }
 
-func BuscaCotacao() (map[string]Cotacaodb, error) {
+func BuscaCotacao(c context.Context) (map[string]Cotacaodb, error) {
 	req, err := http.Get("https://economia.awesomeapi.com.br/json/last/USD-BRL")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error ao fazer requisição: %v\n", err)
 	}
 	defer req.Body.Close()
+
 	res, err := io.ReadAll(req.Body)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Erro ao ler a resposta: %v\n", err)
@@ -73,7 +80,7 @@ func BuscaCotacao() (map[string]Cotacaodb, error) {
 	}
 	return data, nil
 }
-func salvProd(cota map[string]Cotacaodb) error {
+func salvCota(c context.Context, cota map[string]Cotacaodb) error {
 	db, err := sql.Open("sqlite3", "cotacao.db")
 	if err != nil {
 		return err
@@ -82,9 +89,9 @@ func salvProd(cota map[string]Cotacaodb) error {
 	defer db.Close()
 	cot := cota["USDBRL"]
 	sts := `
-	CREATE TABLE cotacao(id INTEGER PRIMARY KEY, code TEXT, codein TEXT, name TEXT, high TEXT, low TEXT, varbid TEXT, pctchange TEXT, bid TEXT, ask TEXT, timestamp TEXT, create_date TEXT);
+	CREATE TABLE cotacao(id INTEGER PRIMARY KEY,code TEXT, codein TEXT, name TEXT, high TEXT, low TEXT, varbid TEXT, pctchange TEXT, bid TEXT, ask TEXT, timestamp TEXT, create_date TEXT);
 			INSERT INTO
-				cotacoes(
+				cotacao(
 					code,
 					codein,
 					name,
@@ -126,147 +133,3 @@ func salvProd(cota map[string]Cotacaodb) error {
 	fmt.Println("table data created")
 	return nil
 }
-
-/*
-func BuscaCotacaoHandler(w http.ResponseWriter, r *http.Request) {
-	db, err := sql.Open("sqlite3", "cotacao.db")
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer db.Close()
-
-	w.Header().Set("Content-Type", "application/json")
-	ctx, cancel := context.WithTimeout(r.Context(), 2000*time.Millisecond)
-	defer cancel()
-
-	cot, error := BuscaCotacao(ctx)
-	if error != nil {
-		panic(fmt.Sprintf("Falha ao tentar pegar cotação: %v", error))
-	}
-
-	println(cot)
-	ctx = nil
-	ctx, _ = context.WithTimeout(context.Background(), 10*time.Nanosecond)
-
-	lastID, err := salvarCotacao(ctx, db, cot)
-
-	if err != nil {
-		panic(fmt.Sprintf("Erro do buscaCotacao %v", err))
-	}
-	fmt.Printf("main.CotacaoHandler - Último ID inserido: %d", lastID)
-
-	json.NewEncoder(w).Encode(cot)
-
-}
-func BuscaCotacao(c context.Context) (map[string]Cotacaodb, error) {
-
-		f, err := os.Create("arquivos.txt")
-		if err != nil {
-			panic(err)
-		}
-
-	req, err := http.Get("https://economia.awesomeapi.com.br/json/last/USD-BRL")
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error ao fazer requisição: %v\n", err)
-	}
-	defer req.Body.Close()
-	res, err := io.ReadAll(req.Body)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Erro ao ler a resposta: %v\n", err)
-	}
-	//f.Write(res)
-	var data map[string]Cotacaodb
-	err = json.Unmarshal(res, &data)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Erro ao fazer parse da resposta: %v\n", err)
-	}
-	return data, nil
-}
-
-func salvarCotacao(c context.Context, db *sql.DB, cota map[string]Cotacaodb) (int64, error) {
-	obj := cota["USDBRL"]
-
-	ct := `
-	CREATE TABLE cotacoes(id INTEGER PRIMARY KEY, code TEXT, codein TEXT, name TEXT, high TEXT, low TEXT, varbid TEXT, pctchange TEXT, bid TEXT, ask TEXT, timestamp TEXT, create_date TEXT);
-			INSERT INTO
-				cotacoes(
-					code,
-					codein,
-					name,
-					high,
-					low,
-					varbid,
-					pctchange,
-					bid,
-					ask,
-					timestamp,
-					create_date
-				)
-				VALUES (
-					?,
-					?,
-					?,
-					?,
-					?,
-					?,
-					?,
-					?,
-					?,
-					?,
-					?
-				);
-		`
-
-	select {
-	case <-c.Done():
-		return int64(0), errors.New("error tempo exedido")
-	}
-
-	re, err := db.Exec(ct,
-		obj.Code,
-		obj.Codein,
-		obj.Name,
-		obj.High,
-		obj.Low,
-		obj.VarBid,
-		obj.PctChange,
-		obj.Bid,
-		obj.Ask,
-		obj.Timestamp,
-		obj.CreateDate,
-	)
-
-	if err != nil {
-		return int64(0), err
-	}
-
-	// Inserir o registro na tabela
-	lastID, err := re.LastInsertId()
-
-	if err != nil {
-		return int64(0), err
-	}
-
-	return lastID, nil
-	/*
-
-		stmt, err := db.Prepare("INSERT INTO cotacoes(code,codein,name,high,low,varbid,pctchange,bid,ask,timestamp,create_date) VALUES (?,?,?,?,?,?,?,?,?,?,?)")
-		if err != nil {
-			panic(err)
-		}
-
-		defer stmt.Close()
-		rt, err := stmt.Exec(obj.Code, obj.Codein, obj.Ask, obj.Bid, obj.CreateDate, obj.High, obj.Low, obj.Name, obj.PctChange, obj.Timestamp, obj.VarBid)
-		if err != nil {
-			return int64(0), err
-		}
-		lastID, err := rt.LastInsertId()
-
-		if err != nil {
-			return int64(0), err
-		}
-		return lastID, nil
-
-
-}
-*/
