@@ -1,15 +1,13 @@
 package main
 
 import (
-	"context"
 	"database/sql"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
-	"time"
 
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -27,16 +25,113 @@ type Cotacaodb struct {
 	Timestamp  string `json:"timestamp"`
 	CreateDate string `json:"create_date"`
 }
+type Car struct {
+	id    float64
+	name  string
+	price float64
+}
 
 func main() {
-	http.HandleFunc("/cotacao", BuscaCotacaoHandler)
+	http.HandleFunc("/cotacao", productHandler)
 	http.ListenAndServe(":8080", nil)
 
 }
+func productHandler(w http.ResponseWriter, r *http.Request) {
+
+	w.Header().Set("Content-Type", "application/json")
+	var cot map[string]Cotacaodb
+	cot, err := BuscaCotacao()
+	if err != nil {
+		panic(err)
+	}
+	println(cot["USDBRL"].Name)
+	err = salvProd(cot)
+	if err != nil {
+		log.Fatal(err)
+	}
+	//log.Printf("main.CotacaoHandler - Último ID inserido: %d", lastID)
+	json.NewEncoder(w).Encode(cot)
+
+}
+
+func BuscaCotacao() (map[string]Cotacaodb, error) {
+	req, err := http.Get("https://economia.awesomeapi.com.br/json/last/USD-BRL")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error ao fazer requisição: %v\n", err)
+	}
+	defer req.Body.Close()
+	res, err := io.ReadAll(req.Body)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Erro ao ler a resposta: %v\n", err)
+	}
+
+	//f.Write(res)
+	var data map[string]Cotacaodb
+	err = json.Unmarshal(res, &data)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Erro ao fazer parse da resposta: %v\n", err)
+	}
+	return data, nil
+}
+func salvProd(cota map[string]Cotacaodb) error {
+	db, err := sql.Open("sqlite3", "cotacao.db")
+	if err != nil {
+		return err
+	}
+
+	defer db.Close()
+	cot := cota["USDBRL"]
+	sts := `
+	CREATE TABLE cotacao(id INTEGER PRIMARY KEY, code TEXT, codein TEXT, name TEXT, high TEXT, low TEXT, varbid TEXT, pctchange TEXT, bid TEXT, ask TEXT, timestamp TEXT, create_date TEXT);
+			INSERT INTO
+				cotacoes(
+					code,
+					codein,
+					name,
+					high,
+					low,
+					varbid,
+					pctchange,
+					bid,
+					ask,
+					timestamp,
+					create_date
+				)
+				VALUES (
+					?,
+					?,
+					?,
+					?,
+					?,
+					?,
+					?,
+					?,
+					?,
+					?,
+					?
+				);
+	`
+
+	result, err := db.Exec(sts, cot.Code, cot.Codein, cot.Name, cot.High, cot.Low, cot.VarBid, cot.PctChange, cot.Bid, cot.Ask, cot.Timestamp, cot.CreateDate)
+
+	if err != nil {
+		log.Fatal(err)
+	}
+	lastID, err := result.LastInsertId()
+	if err != nil {
+		return err
+	}
+
+	fmt.Println(lastID)
+	fmt.Println("table data created")
+	return nil
+}
+
+/*
 func BuscaCotacaoHandler(w http.ResponseWriter, r *http.Request) {
 	db, err := sql.Open("sqlite3", "cotacao.db")
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 	defer db.Close()
 
@@ -49,6 +144,7 @@ func BuscaCotacaoHandler(w http.ResponseWriter, r *http.Request) {
 		panic(fmt.Sprintf("Falha ao tentar pegar cotação: %v", error))
 	}
 
+	println(cot)
 	ctx = nil
 	ctx, _ = context.WithTimeout(context.Background(), 10*time.Nanosecond)
 
@@ -63,10 +159,12 @@ func BuscaCotacaoHandler(w http.ResponseWriter, r *http.Request) {
 
 }
 func BuscaCotacao(c context.Context) (map[string]Cotacaodb, error) {
-	f, err := os.Create("arquivos.txt")
-	if err != nil {
-		panic(err)
-	}
+
+		f, err := os.Create("arquivos.txt")
+		if err != nil {
+			panic(err)
+		}
+
 	req, err := http.Get("https://economia.awesomeapi.com.br/json/last/USD-BRL")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error ao fazer requisição: %v\n", err)
@@ -76,7 +174,7 @@ func BuscaCotacao(c context.Context) (map[string]Cotacaodb, error) {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Erro ao ler a resposta: %v\n", err)
 	}
-	f.Write(res)
+	//f.Write(res)
 	var data map[string]Cotacaodb
 	err = json.Unmarshal(res, &data)
 	if err != nil {
@@ -89,34 +187,35 @@ func salvarCotacao(c context.Context, db *sql.DB, cota map[string]Cotacaodb) (in
 	obj := cota["USDBRL"]
 
 	ct := `
-		INSERT INTO
-			cotacoes(
-				code,
-				codein,
-				name,
-				high,
-				low,
-				varbid,
-				pctchange,
-				bid,
-				ask,
-				timestamp,
-				create_date
-			)
-			VALUES (
-				?, 
-				?, 
-				?, 
-				?, 
-				?, 
-				?, 
-				?, 
-				?, 
-				?, 
-				?, 
-				?
-			);
-	`
+	CREATE TABLE cotacoes(id INTEGER PRIMARY KEY, code TEXT, codein TEXT, name TEXT, high TEXT, low TEXT, varbid TEXT, pctchange TEXT, bid TEXT, ask TEXT, timestamp TEXT, create_date TEXT);
+			INSERT INTO
+				cotacoes(
+					code,
+					codein,
+					name,
+					high,
+					low,
+					varbid,
+					pctchange,
+					bid,
+					ask,
+					timestamp,
+					create_date
+				)
+				VALUES (
+					?,
+					?,
+					?,
+					?,
+					?,
+					?,
+					?,
+					?,
+					?,
+					?,
+					?
+				);
+		`
 
 	select {
 	case <-c.Done():
@@ -156,10 +255,8 @@ func salvarCotacao(c context.Context, db *sql.DB, cota map[string]Cotacaodb) (in
 			panic(err)
 		}
 
-		obj := cota["USDBRL"]
-
 		defer stmt.Close()
-		obj, err := stmt.Exec(cota.Code, cota.Codein, cota.Ask, cota.Bid, cota.CreateDate, cota.High, cota.Low, cota.Name, cota.PctChange, cota.Timestamp, cota.VarBid)
+		rt, err := stmt.Exec(obj.Code, obj.Codein, obj.Ask, obj.Bid, obj.CreateDate, obj.High, obj.Low, obj.Name, obj.PctChange, obj.Timestamp, obj.VarBid)
 		if err != nil {
 			return int64(0), err
 		}
@@ -169,5 +266,7 @@ func salvarCotacao(c context.Context, db *sql.DB, cota map[string]Cotacaodb) (in
 			return int64(0), err
 		}
 		return lastID, nil
-	*/
+
+
 }
+*/
