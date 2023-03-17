@@ -5,10 +5,8 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"io"
-	"log"
+	"io/ioutil"
 	"net/http"
-	"os"
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -62,22 +60,29 @@ func cotaHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func BuscaCotacao(c context.Context) (map[string]Cotacaodb, error) {
-	req, err := http.Get("https://economia.awesomeapi.com.br/json/last/USD-BRL")
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error ao fazer requisição: %v\n", err)
-	}
-	defer req.Body.Close()
-
-	res, err := io.ReadAll(req.Body)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Erro ao ler a resposta: %v\n", err)
-	}
-
 	var data map[string]Cotacaodb
-	err = json.Unmarshal(res, &data)
+	req, err := http.NewRequestWithContext(c, http.MethodGet, "https://economia.awesomeapi.com.br/json/last/USD-BRL", nil)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Erro ao fazer parse da resposta: %v\n", err)
+		return data, err
 	}
+
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return data, err
+	}
+
+	defer res.Body.Close()
+
+	body, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		return data, err
+	}
+
+	err = json.Unmarshal(body, &data)
+	if err != nil {
+		return data, err
+	}
+
 	return data, nil
 }
 func salvCota(c context.Context, cota map[string]Cotacaodb) error {
@@ -122,7 +127,7 @@ func salvCota(c context.Context, cota map[string]Cotacaodb) error {
 	result, err := db.Exec(sts, cot.Code, cot.Codein, cot.Name, cot.High, cot.Low, cot.VarBid, cot.PctChange, cot.Bid, cot.Ask, cot.Timestamp, cot.CreateDate)
 
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 	lastID, err := result.LastInsertId()
 	if err != nil {
