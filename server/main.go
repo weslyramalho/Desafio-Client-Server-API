@@ -41,6 +41,7 @@ func cotaHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	ctx, cancel := context.WithTimeout(r.Context(), 2000*time.Millisecond)
 	defer cancel()
+
 	var cot map[string]Cotacaodb
 	cot, err := BuscaCotacao(ctx)
 	if err != nil {
@@ -72,7 +73,6 @@ func BuscaCotacao(c context.Context) (map[string]Cotacaodb, error) {
 		fmt.Fprintf(os.Stderr, "Erro ao ler a resposta: %v\n", err)
 	}
 
-	//f.Write(res)
 	var data map[string]Cotacaodb
 	err = json.Unmarshal(res, &data)
 	if err != nil {
